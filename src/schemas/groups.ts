@@ -8,6 +8,7 @@ export const createGroupSchema = z.object({
   classTime: z.string().regex(/^\d{2}:\d{2}$/, 'Expected HH:MM'),
   durationMin: z.number().int().positive(),
   maxCapacity: z.number().int().positive(),
+  classesPerPeriod: z.number().int().positive(),
 });
 
 export const updateGroupSchema = createGroupSchema.partial();
