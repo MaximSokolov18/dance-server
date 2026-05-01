@@ -39,6 +39,7 @@ export const groups = pgTable('groups', {
     classTime: time('class_time').notNull(),
     durationMin: integer('duration_min').notNull(),
     maxCapacity: integer('max_capacity').notNull(),
+    classesPerPeriod: integer('classes_per_period').notNull(),
 });
 
 export const enrollments = pgTable('enrollments', {

@@ -13,6 +13,7 @@ const groupSchema = {
     classTime: { type: 'string' },
     durationMin: { type: 'integer' },
     maxCapacity: { type: 'integer' },
+    classesPerPeriod: { type: 'integer' },
   },
 } as const;
 
@@ -22,6 +23,7 @@ const groupBodyProps = {
   classTime: { type: 'string', pattern: '^\\d{2}:\\d{2}$' },
   durationMin: { type: 'integer', minimum: 1 },
   maxCapacity: { type: 'integer', minimum: 1 },
+  classesPerPeriod: { type: 'integer', minimum: 1 },
 } as const;
 
 const idParam = {
@@ -68,7 +70,7 @@ export async function groupsRoutes(app: FastifyInstance) {
       summary: 'Create a group',
       body: {
         type: 'object',
-        required: ['name', 'weekDays', 'classTime', 'durationMin', 'maxCapacity'],
+        required: ['name', 'weekDays', 'classTime', 'durationMin', 'maxCapacity', 'classesPerPeriod'],
         properties: groupBodyProps,
       },
       response: { 201: groupSchema, 400: errorSchema },
