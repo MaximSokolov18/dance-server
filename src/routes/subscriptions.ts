@@ -7,6 +7,7 @@ import {
 import * as subscriptionsService from '../services/subscriptions.js';
 
 const STATUS_ENUM = ['active', 'expired', 'frozen'] as const;
+const PAYMENT_METHOD_ENUM = ['card', 'cash', 'ua_card'] as const;
 
 const subscriptionSchema = {
     type: 'object',
@@ -20,6 +21,7 @@ const subscriptionSchema = {
         classesUsed: {type: 'integer'},
         amountPaid: {type: 'string'},
         status: {type: 'string', enum: STATUS_ENUM},
+        paymentMethod: {type: 'string', enum: PAYMENT_METHOD_ENUM, nullable: true},
     },
 } as const;
 
@@ -67,25 +69,31 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
             summary: 'Create a subscription',
             body: {
                 type: 'object',
-                required: ['clientId', 'groupId', 'periodStart', 'periodEnd', 'classesTotal', 'amountPaid'],
+                required: ['clientId', 'groupId', 'periodStart', 'amountPaid'],
                 properties: {
                     clientId: {type: 'string', format: 'uuid'},
                     groupId: {type: 'string', format: 'uuid'},
                     periodStart: {type: 'string', format: 'date'},
-                    periodEnd: {type: 'string', format: 'date'},
-                    classesTotal: {type: 'integer', minimum: 1},
                     amountPaid: {type: 'string', pattern: '^\\d+(\\.\\d{1,2})?$'},
+                    paymentMethod: {type: 'string', enum: PAYMENT_METHOD_ENUM},
                 },
             },
-            response: {201: subscriptionSchema, 400: errorSchema},
+            response: {201: subscriptionSchema, 400: errorSchema, 404: errorSchema},
         },
     }, async (req, reply) => {
         const parsed = createSubscriptionSchema.safeParse(req.body);
         if (!parsed.success) {
             return reply.code(400).send({error: parsed.error.message, code: 'VALIDATION_ERROR'});
         }
-        const data = await subscriptionsService.createSubscription(parsed.data);
-        return reply.code(201).send(data);
+        try {
+            const data = await subscriptionsService.createSubscription(parsed.data);
+            return reply.code(201).send(data);
+        } catch (err: unknown) {
+            if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'NOT_FOUND') {
+                return reply.code(404).send({error: err.message, code: 'NOT_FOUND'});
+            }
+            throw err;
+        }
     });
 
     // PATCH /subscriptions/:id
@@ -97,9 +105,14 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
             body: {
                 type: 'object',
                 properties: {
+                    clientId: {type: 'string', format: 'uuid'},
+                    groupId: {type: 'string', format: 'uuid'},
+                    periodStart: {type: 'string', format: 'date'},
+                    amountPaid: {type: 'string', pattern: '^\\d+(\\.\\d{1,2})?$'},
                     status: {type: 'string', enum: STATUS_ENUM},
                     classesUsed: {type: 'integer', minimum: 0},
                     periodEnd: {type: 'string', format: 'date'},
+                    paymentMethod: {type: 'string', enum: PAYMENT_METHOD_ENUM},
                 },
             },
             response: {200: subscriptionSchema, 400: errorSchema, 404: errorSchema},

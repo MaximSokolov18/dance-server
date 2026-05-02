@@ -68,6 +68,7 @@ export const subscriptions = pgTable('subscriptions', {
     classesUsed: integer('classes_used').notNull().default(0),
     amountPaid: decimal('amount_paid', {precision: 10, scale: 2}).notNull(),
     status: subscriptionStatusEnum('status').notNull().default('active'),
+    paymentMethod: text('payment_method').$type<'card' | 'cash' | 'ua_card'>(),
 });
 
 export const holidays = pgTable(
@@ -81,31 +82,39 @@ export const holidays = pgTable(
     (t) => [unique('holidays_date_unique').on(t.date)],
 );
 
-export const sessions = pgTable('sessions', {
-    id: uuid('id').primaryKey().defaultRandom(),
-    groupId: uuid('group_id')
-        .notNull()
-        .references(() => groups.id, {onDelete: 'cascade'}),
-    sessionDate: date('session_date').notNull(),
-    sessionTime: time('session_time').notNull(),
-    cancelled: boolean('cancelled').notNull().default(false),
-    holidayId: uuid('holiday_id').references(() => holidays.id, {onDelete: 'set null'}),
-});
+export const sessions = pgTable(
+    'sessions',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        groupId: uuid('group_id')
+            .notNull()
+            .references(() => groups.id, {onDelete: 'cascade'}),
+        sessionDate: date('session_date').notNull(),
+        sessionTime: time('session_time').notNull(),
+        cancelled: boolean('cancelled').notNull().default(false),
+        holidayId: uuid('holiday_id').references(() => holidays.id, {onDelete: 'set null'}),
+    },
+    (t) => [unique('sessions_group_date_unique').on(t.groupId, t.sessionDate)],
+);
 
-export const attendance = pgTable('attendance', {
-    id: uuid('id').primaryKey().defaultRandom(),
-    sessionId: uuid('session_id')
-        .notNull()
-        .references(() => sessions.id, {onDelete: 'cascade'}),
-    clientId: uuid('client_id')
-        .notNull()
-        .references(() => clients.id, {onDelete: 'cascade'}),
-    subscriptionId: uuid('subscription_id')
-        .notNull()
-        .references(() => subscriptions.id, {onDelete: 'cascade'}),
-    present: boolean('present').notNull(),
-    note: text('note'),
-});
+export const attendance = pgTable(
+    'attendance',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        sessionId: uuid('session_id')
+            .notNull()
+            .references(() => sessions.id, {onDelete: 'cascade'}),
+        clientId: uuid('client_id')
+            .notNull()
+            .references(() => clients.id, {onDelete: 'cascade'}),
+        subscriptionId: uuid('subscription_id')
+            .notNull()
+            .references(() => subscriptions.id, {onDelete: 'cascade'}),
+        present: boolean('present').notNull(),
+        note: text('note'),
+    },
+    (t) => [unique('attendance_session_client_unique').on(t.sessionId, t.clientId)],
+);
 
 // ── Relations ─────────────────────────────────────────────────────────────────
 
