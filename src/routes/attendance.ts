@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { AppError } from '../lib/errors.js';
 import { markAttendanceBodySchema } from '../schemas/attendance.js';
 import * as attendanceService from '../services/attendance.js';
 
@@ -64,16 +65,8 @@ export async function attendanceRoutes(app: FastifyInstance) {
       const data = await attendanceService.markAttendance(req.params.session_id, parsed.data);
       return reply.send(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message === 'SESSION_NOT_FOUND') {
-        return reply.code(404).send({ error: 'Session not found', code: 'NOT_FOUND' });
-      }
-      if (message.startsWith('CLIENT_NOT_ENROLLED:')) {
-        const clientId = message.split(':')[1];
-        return reply.code(422).send({
-          error: `Client ${clientId} is not enrolled in this group`,
-          code: 'CLIENT_NOT_ENROLLED',
-        });
+      if (err instanceof AppError) {
+        return reply.code(err.statusCode).send({ error: err.message, code: err.code });
       }
       throw err;
     }

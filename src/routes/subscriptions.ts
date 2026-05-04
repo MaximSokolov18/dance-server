@@ -1,4 +1,5 @@
 import type {FastifyInstance} from 'fastify';
+import {AppError} from '../lib/errors.js';
 import {
     createSubscriptionSchema,
     updateSubscriptionSchema,
@@ -89,8 +90,8 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
             const data = await subscriptionsService.createSubscription(parsed.data);
             return reply.code(201).send(data);
         } catch (err: unknown) {
-            if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'NOT_FOUND') {
-                return reply.code(404).send({error: err.message, code: 'NOT_FOUND'});
+            if (err instanceof AppError) {
+                return reply.code(err.statusCode as 400 | 404).send({error: err.message, code: err.code});
             }
             throw err;
         }

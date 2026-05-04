@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const createClientSchema = z.object({
   name: z.string().min(1),
   telegram: z.string().optional(),
-  illnesses: z.number().int().min(0).optional(),
+  illnesses: z.number().int().min(0).max(365).optional(),
   active: z.boolean().optional(),
 });
 

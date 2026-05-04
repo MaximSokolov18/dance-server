@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const paymentMethodSchema = z.enum(['card', 'cash', 'ua_card']).nullable().optional();
+const paymentMethodSchema = z.enum(['card', 'cash', 'ua_card']).optional();
 
 export const createSubscriptionSchema = z.object({
     clientId: z.uuid(),

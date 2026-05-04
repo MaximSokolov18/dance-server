@@ -2,6 +2,7 @@ import {and, count, eq, gte, lt} from 'drizzle-orm';
 import {getDb} from '../db/index.js';
 import {attendance, clients, groups, holidays, sessions, subscriptions} from '../db/schema.js';
 import {calcPeriodEnd} from '../lib/calcPeriodEnd.js';
+import {NotFoundError} from '../lib/errors.js';
 import type {CreateSubscription, UpdateSubscription} from '../schemas/subscriptions.js';
 
 export async function listSubscriptions(filters: {
@@ -28,7 +29,7 @@ export async function createSubscription(data: CreateSubscription) {
         db.select({date: holidays.date}).from(holidays),
     ]);
 
-    if (!group) throw Object.assign(new Error('Group not found'), {code: 'NOT_FOUND'});
+    if (!group) throw new NotFoundError('Group not found');
 
     const periodEnd = calcPeriodEnd(
         data.periodStart,

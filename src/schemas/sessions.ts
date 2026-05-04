@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const generateSessionsSchema = z.object({
   groupId: z.uuid(),
   weeks: z.number().int().min(1).max(52).default(4),
+  fromDate: z.string().date().optional(),
 });
 
 export const updateSessionSchema = z.object({

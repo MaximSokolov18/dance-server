@@ -2,7 +2,9 @@ import { and, count, eq, isNull } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
 import { attendance, subscriptions, enrollments, sessions, groups, holidays } from '../db/schema.js';
 import { calcPeriodEnd } from '../lib/calcPeriodEnd.js';
+import { NotFoundError, UnprocessableError } from '../lib/errors.js';
 import type { MarkAttendanceItem } from '../schemas/attendance.js';
+
 
 export async function getAttendanceForSession(sessionId: string) {
   const db = getDb();
@@ -12,13 +14,17 @@ export async function getAttendanceForSession(sessionId: string) {
   });
 }
 
-export async function syncPeriodEnd(db: ReturnType<typeof getDb>, subscriptionId: string) {
+export async function syncPeriodEnd(
+  db: ReturnType<typeof getDb>,
+  subscriptionId: string,
+  cachedHolidayDates?: string[],
+) {
   const [{ absentCount }] = await db
     .select({ absentCount: count() })
     .from(attendance)
     .where(and(eq(attendance.subscriptionId, subscriptionId), eq(attendance.present, false)));
 
-  const extension = Math.min(absentCount, 1);
+  const illnessMakeups = Math.min(absentCount, 1);
 
   const sub = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, subscriptionId) });
   if (!sub) return;
@@ -26,14 +32,14 @@ export async function syncPeriodEnd(db: ReturnType<typeof getDb>, subscriptionId
   const group = await db.query.groups.findFirst({ where: eq(groups.id, sub.groupId) });
   if (!group) return;
 
-  const allHolidays = await db.select({ date: holidays.date }).from(holidays);
+  const holidayDates = cachedHolidayDates ?? (await db.select({ date: holidays.date }).from(holidays)).map(h => h.date);
 
   const newPeriodEnd = calcPeriodEnd(
     sub.periodStart,
     group.weekDays,
     sub.classesTotal,
-    extension,
-    allHolidays.map(h => h.date),
+    illnessMakeups,
+    holidayDates,
   );
 
   if (newPeriodEnd !== sub.periodEnd) {
@@ -67,7 +73,7 @@ export async function markAttendance(sessionId: string, items: MarkAttendanceIte
   const session = await db.query.sessions.findFirst({
     where: eq(sessions.id, sessionId),
   });
-  if (!session) throw new Error('SESSION_NOT_FOUND');
+  if (!session) throw new NotFoundError('Session not found');
 
   const results = [];
 
@@ -81,7 +87,18 @@ export async function markAttendance(sessionId: string, items: MarkAttendanceIte
       ),
     });
     if (!enrollment) {
-      throw new Error(`CLIENT_NOT_ENROLLED:${item.clientId}`);
+      throw new UnprocessableError(`Client ${item.clientId} is not enrolled in this group`, 'CLIENT_NOT_ENROLLED');
+    }
+
+    // Verify subscription belongs to this client
+    const subscription = await db.query.subscriptions.findFirst({
+      where: and(eq(subscriptions.id, item.subscriptionId), eq(subscriptions.clientId, item.clientId)),
+    });
+    if (!subscription) {
+      throw new UnprocessableError(
+        `Subscription ${item.subscriptionId} does not belong to client ${item.clientId}`,
+        'INVALID_SUBSCRIPTION',
+      );
     }
 
     // Capture old subscriptionId before upsert (subscription may change)

@@ -14,7 +14,8 @@ export function getDb() {
 }
 
 export function initDb(connectionString: string) {
-  const pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
+  const ssl = process.env.NODE_ENV === 'production' ? true : { rejectUnauthorized: false };
+  const pool = new Pool({ connectionString, ssl });
   _db = drizzle(pool, { schema });
   return _db;
 }

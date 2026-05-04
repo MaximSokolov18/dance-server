@@ -1,4 +1,4 @@
-import { and, eq, gte } from 'drizzle-orm';
+import { and, eq, gte, lte } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
 import { sessions, holidays, groups } from '../db/schema.js';
 import type { UpdateSession } from '../schemas/sessions.js';
@@ -7,25 +7,23 @@ const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frid
 
 export async function listSessions(groupId?: string) {
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
-  const conditions = [gte(sessions.sessionDate, today)];
-  if (groupId) conditions.push(eq(sessions.groupId, groupId));
+  const conditions = groupId ? [eq(sessions.groupId, groupId)] : [];
   return db
     .select()
     .from(sessions)
-    .where(and(...conditions))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(sessions.sessionDate);
 }
 
-export async function generateSessions(groupId: string, weeks: number) {
+export async function generateSessions(groupId: string, weeks: number, fromDate?: string) {
   const db = getDb();
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, groupId) });
   if (!group) return null;
 
   // Fetch all holiday dates for the window
-  const startDate = new Date();
-  const endDate = new Date();
+  const startDate = fromDate ? new Date(fromDate) : new Date();
+  const endDate = new Date(startDate);
   endDate.setUTCDate(endDate.getUTCDate() + weeks * 7);
 
   const holidayRows = await db
@@ -34,7 +32,7 @@ export async function generateSessions(groupId: string, weeks: number) {
     .where(
       and(
         gte(holidays.date, startDate.toISOString().slice(0, 10)),
-        // lte not easily available — just compare string; pg date ordering is lexicographic
+        lte(holidays.date, endDate.toISOString().slice(0, 10)),
         eq(holidays.affectsAllGroups, true),
       ),
     );
@@ -81,5 +79,11 @@ export async function updateSession(id: string, data: UpdateSession) {
     .set(data)
     .where(eq(sessions.id, id))
     .returning();
+  return row ?? null;
+}
+
+export async function deleteSession(id: string) {
+  const db = getDb();
+  const [row] = await db.delete(sessions).where(eq(sessions.id, id)).returning();
   return row ?? null;
 }

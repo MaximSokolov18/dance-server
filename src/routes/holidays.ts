@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { isUniqueViolation } from '../lib/errors.js';
 import { createHolidaySchema } from '../schemas/holidays.js';
 import * as holidaysService from '../services/holidays.js';
 
@@ -60,9 +61,7 @@ export async function holidaysRoutes(app: FastifyInstance) {
       const data = await holidaysService.createHoliday(parsed.data);
       return reply.code(201).send(data);
     } catch (err: unknown) {
-      // Unique constraint on date
-      const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('unique') || msg.includes('duplicate')) {
+      if (isUniqueViolation(err)) {
         return reply.code(409).send({ error: 'Holiday already exists for this date', code: 'CONFLICT' });
       }
       throw err;

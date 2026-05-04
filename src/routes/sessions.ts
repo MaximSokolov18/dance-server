@@ -60,6 +60,7 @@ export async function sessionsRoutes(app: FastifyInstance) {
         properties: {
           groupId: { type: 'string', format: 'uuid' },
           weeks: { type: 'integer', minimum: 1, maximum: 52, default: 4 },
+          fromDate: { type: 'string', format: 'date' },
         },
       },
       response: { 201: { type: 'array', items: sessionSchema }, 400: errorSchema, 404: errorSchema },
@@ -69,11 +70,25 @@ export async function sessionsRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.message, code: 'VALIDATION_ERROR' });
     }
-    const data = await sessionsService.generateSessions(parsed.data.groupId, parsed.data.weeks);
+    const data = await sessionsService.generateSessions(parsed.data.groupId, parsed.data.weeks, parsed.data.fromDate);
     if (!data) {
       return reply.code(404).send({ error: 'Group not found', code: 'NOT_FOUND' });
     }
     return reply.code(201).send(data);
+  });
+
+  // DELETE /sessions/:id
+  app.delete<{ Params: { id: string } }>('/:id', {
+    schema: {
+      tags: ['sessions'],
+      summary: 'Delete a session',
+      params: idParam,
+      response: { 200: sessionSchema, 404: errorSchema },
+    },
+  }, async (req, reply) => {
+    const data = await sessionsService.deleteSession(req.params.id);
+    if (!data) return reply.code(404).send({ error: 'Session not found', code: 'NOT_FOUND' });
+    return reply.send(data);
   });
 
   // PATCH /sessions/:id

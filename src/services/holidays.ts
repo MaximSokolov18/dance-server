@@ -4,19 +4,21 @@ import {holidays, sessions, subscriptions} from '../db/schema.js';
 import {syncPeriodEnd} from './attendance.js';
 import type {CreateHoliday} from '../schemas/holidays.js';
 
+
 export async function listHolidays() {
     const db = getDb();
     return db.select().from(holidays).orderBy(holidays.date);
 }
 
 async function recalcActiveSubscriptionPeriodEnds(db: ReturnType<typeof getDb>) {
-    const activeSubs = await db
-        .select({id: subscriptions.id})
-        .from(subscriptions)
-        .where(eq(subscriptions.status, 'active'));
+    const [allHolidays, activeSubs] = await Promise.all([
+        db.select({date: holidays.date}).from(holidays),
+        db.select({id: subscriptions.id}).from(subscriptions).where(eq(subscriptions.status, 'active')),
+    ]);
+    const holidayDates = allHolidays.map(h => h.date);
 
     for (const sub of activeSubs) {
-        await syncPeriodEnd(db, sub.id);
+        await syncPeriodEnd(db, sub.id, holidayDates);
     }
 }
 
