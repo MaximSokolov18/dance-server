@@ -1,9 +1,10 @@
-import {and, count, eq, gte, lt} from 'drizzle-orm';
+import {and, eq, lt} from 'drizzle-orm';
 import {getDb} from '../db/index.js';
-import {attendance, clients, groups, holidays, sessions, subscriptions} from '../db/schema.js';
+import {clients, groups, holidays, subscriptions} from '../db/schema.js';
 import {calcPeriodEnd} from '../lib/calcPeriodEnd.js';
 import {NotFoundError} from '../lib/errors.js';
 import type {CreateSubscription, UpdateSubscription} from '../schemas/subscriptions.js';
+import {syncClassesUsed} from './attendance.js';
 
 export async function listSubscriptions(filters: {
     clientId?: string;
@@ -50,6 +51,7 @@ export async function updateSubscription(id: string, data: UpdateSubscription) {
     const db = getDb();
 
     const updateData: UpdateSubscription & { periodEnd?: string } = { ...data };
+    let periodWindowShifted = false;
 
     if (data.periodStart !== undefined || data.groupId !== undefined) {
         const existing = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, id) });
@@ -75,20 +77,8 @@ export async function updateSubscription(id: string, data: UpdateSubscription) {
                 updateData.periodEnd = periodEnd;
             }
 
-            // Recount classesUsed when the period window shifts
             if (data.periodStart !== undefined && data.periodStart !== existing.periodStart) {
-                const [{ usedCount }] = await db
-                    .select({ usedCount: count() })
-                    .from(attendance)
-                    .innerJoin(sessions, eq(attendance.sessionId, sessions.id))
-                    .where(
-                        and(
-                            eq(attendance.subscriptionId, id),
-                            eq(attendance.present, true),
-                            gte(sessions.sessionDate, data.periodStart),
-                        )
-                    );
-                updateData.classesUsed = usedCount;
+                periodWindowShifted = true;
             }
         }
     }
@@ -98,6 +88,13 @@ export async function updateSubscription(id: string, data: UpdateSubscription) {
         .set(updateData)
         .where(eq(subscriptions.id, id))
         .returning();
+
+    if (row && periodWindowShifted) {
+        await syncClassesUsed(db, id);
+        const refreshed = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, id) });
+        return refreshed ?? row;
+    }
+
     return row ?? null;
 }
 

@@ -1,4 +1,4 @@
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, gte, isNull, lte } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
 import { attendance, subscriptions, enrollments, sessions, groups, holidays } from '../db/schema.js';
 import { calcPeriodEnd } from '../lib/calcPeriodEnd.js';
@@ -47,11 +47,22 @@ export async function syncPeriodEnd(
   }
 }
 
-async function syncClassesUsed(db: ReturnType<typeof getDb>, subscriptionId: string) {
+export async function syncClassesUsed(db: ReturnType<typeof getDb>, subscriptionId: string) {
+  const sub = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, subscriptionId) });
+  if (!sub) return;
+
   const [{ usedCount }] = await db
     .select({ usedCount: count() })
     .from(attendance)
-    .where(and(eq(attendance.subscriptionId, subscriptionId), eq(attendance.present, true)));
+    .innerJoin(sessions, eq(attendance.sessionId, sessions.id))
+    .where(
+      and(
+        eq(attendance.subscriptionId, subscriptionId),
+        eq(attendance.present, true),
+        gte(sessions.sessionDate, sub.periodStart),
+        lte(sessions.sessionDate, sub.periodEnd),
+      ),
+    );
 
   const [updated] = await db
     .update(subscriptions)
