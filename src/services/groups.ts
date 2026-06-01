@@ -13,6 +13,7 @@ export async function listGroups() {
       classTime: groups.classTime,
       durationMin: groups.durationMin,
       maxCapacity: groups.maxCapacity,
+      classesPerPeriod: groups.classesPerPeriod,
       enrolledCount: sql<number>`count(${enrollments.id}) filter (where ${enrollments.leftAt} is null)`,
     })
     .from(groups)
