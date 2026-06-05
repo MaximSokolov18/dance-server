@@ -1,6 +1,6 @@
-import {and, eq, lt} from 'drizzle-orm';
+import {and, eq, isNull, lt} from 'drizzle-orm';
 import {getDb} from '../db/index.js';
-import {clients, groups, holidays, subscriptions} from '../db/schema.js';
+import {clients, enrollments, groups, holidays, subscriptions} from '../db/schema.js';
 import {calcPeriodEnd} from '../lib/calcPeriodEnd.js';
 import {NotFoundError} from '../lib/errors.js';
 import type {CreateSubscription, UpdateSubscription} from '../schemas/subscriptions.js';
@@ -52,6 +52,7 @@ export async function updateSubscription(id: string, data: UpdateSubscription) {
 
     const updateData: UpdateSubscription & { periodEnd?: string } = { ...data };
     let periodWindowShifted = false;
+    let groupChange: { clientId: string; oldGroupId: string; newGroupId: string; enrolledAt: string } | null = null;
 
     if (data.periodStart !== undefined || data.groupId !== undefined) {
         const existing = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, id) });
@@ -80,6 +81,15 @@ export async function updateSubscription(id: string, data: UpdateSubscription) {
             if (data.periodStart !== undefined && data.periodStart !== existing.periodStart) {
                 periodWindowShifted = true;
             }
+
+            if (data.groupId !== undefined && data.groupId !== existing.groupId) {
+                groupChange = {
+                    clientId: effectiveClientId,
+                    oldGroupId: existing.groupId,
+                    newGroupId: data.groupId,
+                    enrolledAt: effectivePeriodStart,
+                };
+            }
         }
     }
 
@@ -88,6 +98,39 @@ export async function updateSubscription(id: string, data: UpdateSubscription) {
         .set(updateData)
         .where(eq(subscriptions.id, id))
         .returning();
+
+    if (row && groupChange) {
+        const today = new Date().toISOString().slice(0, 10);
+
+        const oldEnrollment = await db.query.enrollments.findFirst({
+            where: and(
+                eq(enrollments.clientId, groupChange.clientId),
+                eq(enrollments.groupId, groupChange.oldGroupId),
+                isNull(enrollments.leftAt),
+            ),
+        });
+        if (oldEnrollment) {
+            await db
+                .update(enrollments)
+                .set({ leftAt: today })
+                .where(eq(enrollments.id, oldEnrollment.id));
+        }
+
+        const newEnrollment = await db.query.enrollments.findFirst({
+            where: and(
+                eq(enrollments.clientId, groupChange.clientId),
+                eq(enrollments.groupId, groupChange.newGroupId),
+                isNull(enrollments.leftAt),
+            ),
+        });
+        if (!newEnrollment) {
+            await db.insert(enrollments).values({
+                clientId: groupChange.clientId,
+                groupId: groupChange.newGroupId,
+                enrolledAt: groupChange.enrolledAt,
+            });
+        }
+    }
 
     if (row && periodWindowShifted) {
         await syncClassesUsed(db, id);
