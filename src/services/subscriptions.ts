@@ -4,7 +4,7 @@ import {clients, enrollments, groups, holidays, subscriptions} from '../db/schem
 import {calcPeriodEnd} from '../lib/calcPeriodEnd.js';
 import {NotFoundError} from '../lib/errors.js';
 import type {CreateSubscription, UpdateSubscription} from '../schemas/subscriptions.js';
-import {syncClassesUsed} from './attendance.js';
+import {syncClassesUsed, syncPeriodEnd} from './attendance.js';
 
 export async function listSubscriptions(filters: {
     clientId?: string;
@@ -53,10 +53,12 @@ export async function updateSubscription(id: string, data: UpdateSubscription) {
     const updateData: UpdateSubscription & { periodEnd?: string } = { ...data };
     let periodWindowShifted = false;
     let groupChange: { clientId: string; oldGroupId: string; newGroupId: string; enrolledAt: string } | null = null;
+    let priorStatus: 'active' | 'expired' | 'frozen' | null = null;
 
     if (data.periodStart !== undefined || data.groupId !== undefined) {
         const existing = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, id) });
         if (existing) {
+            priorStatus = existing.status;
             const effectivePeriodStart = data.periodStart ?? existing.periodStart;
             const effectiveGroupId = data.groupId ?? existing.groupId;
             const effectiveClientId = existing.clientId;
@@ -134,6 +136,25 @@ export async function updateSubscription(id: string, data: UpdateSubscription) {
 
     if (row && periodWindowShifted) {
         await syncClassesUsed(db, id);
+        await syncPeriodEnd(db, id);
+
+        // Reactivate an expired sub when the new window makes it valid again.
+        // Skip if the caller explicitly set status — respect their override.
+        if (priorStatus === 'expired' && data.status === undefined) {
+            const refreshed = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, id) });
+            if (
+                refreshed
+                && refreshed.status === 'expired'
+                && refreshed.classesUsed < refreshed.classesTotal
+                && refreshed.periodEnd >= new Date().toISOString().slice(0, 10)
+            ) {
+                await db
+                    .update(subscriptions)
+                    .set({ status: 'active' })
+                    .where(eq(subscriptions.id, id));
+            }
+        }
+
         const refreshed = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, id) });
         return refreshed ?? row;
     }

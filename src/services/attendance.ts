@@ -19,18 +19,28 @@ export async function syncPeriodEnd(
   subscriptionId: string,
   cachedHolidayDates?: string[],
 ) {
-  const [{ absentCount }] = await db
-    .select({ absentCount: count() })
-    .from(attendance)
-    .where(and(eq(attendance.subscriptionId, subscriptionId), eq(attendance.present, false)));
-
-  const illnessMakeups = Math.min(absentCount, 1);
-
   const sub = await db.query.subscriptions.findFirst({ where: eq(subscriptions.id, subscriptionId) });
   if (!sub) return;
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, sub.groupId) });
   if (!group) return;
+
+  // Count absences only within the subscription window — absences from before
+  // a shifted periodStart must not extend periodEnd via makeup days.
+  const [{ absentCount }] = await db
+    .select({ absentCount: count() })
+    .from(attendance)
+    .innerJoin(sessions, eq(attendance.sessionId, sessions.id))
+    .where(
+      and(
+        eq(attendance.subscriptionId, subscriptionId),
+        eq(attendance.present, false),
+        gte(sessions.sessionDate, sub.periodStart),
+        lte(sessions.sessionDate, sub.periodEnd),
+      ),
+    );
+
+  const illnessMakeups = Math.min(absentCount, 1);
 
   const holidayDates = cachedHolidayDates ?? (await db.select({ date: holidays.date }).from(holidays)).map(h => h.date);
 
