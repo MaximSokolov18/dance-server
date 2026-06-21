@@ -9,6 +9,7 @@
     "start": "node dist/app.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "subs:reactivate": "tsx src/scripts/reactivateExpiredSubscriptions.ts",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run"
   },
